@@ -31,7 +31,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 try:
-    from llmeshowyou import analyze_file, render_map, read_source, map_path_for, find_source_files
+    from llmeshowyou import analyze_file, render_map, read_source, map_path_for, find_source_files, is_stale
     ENGINE_OK = True
 except ImportError as e:
     ENGINE_OK = False
@@ -97,6 +97,20 @@ def handle_request(method: str, params: dict) -> dict:
                         'required': ['path']
                     }
                 },
+                {
+                    'name': 'check_stale',
+                    'description': 'Check if a .map.md file is stale using SHA-256 hashing. Returns true if the source has changed since the map was generated. Use this first: if a map exists and is not stale, read it directly from disk (cheap). Only call map_file if the map is stale or missing.',
+                    'inputSchema': {
+                        'type': 'object',
+                        'properties': {
+                            'source': {
+                                'type': 'string',
+                                'description': 'Path to the source file (e.g. foo.py)'
+                            }
+                        },
+                        'required': ['source']
+                    }
+                },
             ]
         }
 
@@ -127,6 +141,10 @@ def handle_request(method: str, params: dict) -> dict:
             path = args.get('path', '')
             recursive = args.get('recursive', True)
             return _do_map_folder(path, recursive)
+
+        if name == 'check_stale':
+            source = args.get('source', '')
+            return _do_check_stale(source)
 
         return {
             'isError': True,
@@ -238,6 +256,39 @@ def _do_map_folder(path: str, recursive: bool) -> dict:
         return {
             'isError': True,
             'content': [{'type': 'text', 'text': f'Error mapping folder: {e}'}]
+        }
+
+
+def _do_check_stale(source: str) -> dict:
+    src = Path(source).resolve()
+    if not src.exists():
+        return {
+            'isError': True,
+            'content': [{'type': 'text', 'text': f'Source file not found: {src}'}]
+        }
+    map_path = src.parent / (src.name + '.map.md')
+    if not map_path.exists():
+        return {
+            'content': [{'type': 'text', 'text': json.dumps({
+                'stale': True,
+                'reason': 'map_not_found',
+                'map_path': str(map_path)
+            })}]
+        }
+    try:
+        stale = is_stale(src, map_path)
+        return {
+            'content': [{'type': 'text', 'text': json.dumps({
+                'stale': stale,
+                'reason': 'sha_mismatch' if stale else 'fresh',
+                'source': src.name,
+                'map_path': map_path.name
+            })}]
+        }
+    except Exception as e:
+        return {
+            'isError': True,
+            'content': [{'type': 'text', 'text': f'Error checking staleness: {e}'}]
         }
 
 

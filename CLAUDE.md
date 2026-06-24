@@ -1,7 +1,8 @@
-# map.md hybrid protocol — cheap path first, fresh always
+# map.md hybrid protocol — SHA-staleness check, cheap path first
 When you need to understand a source file:
-1. Check if a `.map.md` file exists next to it (e.g. `foo.py.map.md`)
-2. If it exists and is NOT stale (source modified time <= map modified time), read the map file directly — cheap, no MCP call needed
-3. If no `.map.md` exists OR the source is newer than the map (stale), call the `map_file` MCP tool instead to generate a fresh map
-4. After getting the map (from disk or MCP), use `read_source` MCP tool to read only the specific line ranges you need from the source file
-5. Do not read entire source files unless a required line range is unclear from the map
+1. Check if a `.map.md` file exists next to it (e.g. `foo.py` → `foo.py.map.md`)
+2. If it exists, call `check_stale("foo.py")` to verify it's fresh via SHA-256
+3. If `check_stale` returns `{"stale": false}`, read the `.map.md` file directly from disk — cheap path
+4. If no `.map.md` exists OR `check_stale` returns `{"stale": true}`, call `map_file("foo.py")` to generate a fresh map
+5. After getting the map (disk or MCP), use `read_source` to read only the specific line ranges you need
+6. Do not read entire source files unless a required line range is unclear from the map
