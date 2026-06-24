@@ -47,16 +47,41 @@ python llmeshowyou.py update src/
 python llmeshowyou_gui.py
 ```
 
-## LLM Integration
+## LLM Integration — Two Modes
 
-The generated `.map.md` files are designed to be the first thing an LLM reads when asked about a codebase. The map format includes a read protocol instructing the LLM to:
+### Mode A: Persistent Maps (original)
+Write `.map.md` files to disk. The LLM reads them to navigate the codebase. Fast but can drift if source changes without regeneration.
 
-1. Read the map first (114 lines vs 1,714 lines of source)
-2. Navigate to specific sections using `#[Section]` markers
-3. Read only the relevant source lines
-4. Use cross-file maps for imported dependencies
+### Mode B: Ephemeral Maps via MCP Tool (recommended for active development)
+No `.map.md` files on disk. Instead, run the MCP server and the LLM calls `map_file` as a tool whenever it needs structural info:
 
-Integration with [opencode](https://opencode.ai) and Claude Code is built into the GUI — select files and launch directly with the map-aware prompt.
+```bash
+# Start the MCP server (stdio mode, for opencode)
+python llmeshowyou_mcp_server.py
+```
+
+Configure in `opencode.json`:
+```json
+{
+  "mcpServers": {
+    "llmeshowyou": {
+      "command": "python",
+      "args": ["path/to/llmeshowyou_mcp_server.py"]
+    }
+  }
+}
+```
+
+**Why ephemeral?** Every map is generated fresh from current source on disk. Zero staleness. Zero drift. No maintenance. The LLM gets an accurate structural view every time, even while you're actively editing code.
+
+**Tools provided:**
+- `map_file(path)` — fresh structural map for any source file
+- `read_source(path, start_line, end_line)` — read specific lines by range
+- `map_folder(path)` — index all files in a project folder
+
+## GUI
+
+The Windows GUI (`llmeshowyou_gui.py`) provides a tree view of mapped files with one-click launch to opencode, Claude Code, or your editor — with the map-aware prompt pre-loaded.
 
 ## Dependencies
 

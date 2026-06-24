@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "llmeshowyou": {
+      "description": "Ephemeral file maps — always fresh, never stale",
+      "command": "python",
+      "args": ["path/to/llmeshowyou_mcp_server.py"]
+    }
+  }
+}
