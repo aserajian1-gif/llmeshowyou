@@ -1,0 +1,9 @@
+*.pyc
+__pycache__/
+*.map.md
+dist/
+build/
+*.egg-info/
+.llmeshowyou_gui.json
+*.exe
+*.spec

@@ -1,0 +1,8 @@
+# llmeshowyou — no required third-party dependencies
+# Core functionality uses only Python stdlib.
+#
+# Optional: tree-sitter for enhanced multi-language parsing
+#   pip install tree-sitter
+#
+# Optional: MCP server mode
+#   pip install flask
