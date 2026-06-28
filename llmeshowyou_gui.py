@@ -1589,6 +1589,7 @@ class LLMEShowYouGUI:
         if not items:
             messagebox.showinfo('Review', 'No AC/DoD criteria to review.')
             return
+        scan_root = Path.cwd()
         folder = scan_root
         opencode_path = self._find_opencode()
         if not opencode_path:
@@ -1598,7 +1599,6 @@ class LLMEShowYouGUI:
                 f'  cd /d "{folder}" && opencode --prompt "..."')
             return
         crit = '; '.join(s for s in items)
-        scan_root = Path.cwd()
         skip_dirs = {'node_modules', '__pycache__', '.git', '.opencode',
                      '.claude', 'build', 'dist', '.aider', 'model_temp',
                      'map_cache', 'venv', '.venv'}
