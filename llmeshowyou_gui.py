@@ -1589,8 +1589,11 @@ class LLMEShowYouGUI:
         if not items:
             messagebox.showinfo('Review', 'No AC/DoD criteria to review.')
             return
-        scan_root = Path.cwd()
-        folder = scan_root
+        src_folder = self.source_folder.get().strip()
+        scan_roots = {Path.cwd(), dpath.resolve().parent}
+        if src_folder:
+            scan_roots.add(Path(src_folder))
+        folder = Path.cwd()
         opencode_path = self._find_opencode()
         if not opencode_path:
             messagebox.showinfo(
@@ -1603,18 +1606,19 @@ class LLMEShowYouGUI:
                      '.claude', 'build', 'dist', '.aider', 'model_temp',
                      'map_cache', 'venv', '.venv'}
         map_sources = []
-        for m in sorted(scan_root.rglob('*.map.md')):
-            if any(p.name in skip_dirs or p.name.startswith('.')
-                   for p in m.relative_to(scan_root).parents):
-                continue
-            try:
-                rel = str(m.relative_to(scan_root)).replace('\\', '/')
+        for sr in scan_roots:
+            for m in sorted(sr.rglob('*.map.md')):
+                try:
+                    rel = str(m.relative_to(sr)).replace('\\', '/')
+                except ValueError:
+                    continue
+                if any(p.name in skip_dirs or p.name.startswith('.')
+                       for p in Path(rel).parents):
+                    continue
                 src = rel.removesuffix('.map.md')
-                if m.parent != scan_root or not (scan_root / src).exists():
+                if not (sr / src).exists():
                     continue
                 map_sources.append((rel, src))
-            except Exception:
-                continue
         if map_sources:
             if len(map_sources) == 1:
                 mn, pn = map_sources[0]
