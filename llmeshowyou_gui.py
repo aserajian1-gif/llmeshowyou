@@ -1571,6 +1571,62 @@ class LLMEShowYouGUI:
         )
         return prompt
 
+    def _launch_review(self) -> None:
+        """Launch opencode as an independent reviewer — no prior context,
+        reads discipline file and source, verifies each AC criterion."""
+        dpath = self._discipline_file()
+        if not dpath.exists():
+            messagebox.showwarning('Review', 'No discipline file. Init one first.')
+            return
+        import discipline
+        try:
+            fm, body = discipline._load(str(dpath))
+        except Exception as e:
+            messagebox.showerror('Review', f'Cannot read discipline file:\n{e}')
+            return
+        ticket = fm.get('ticket', '?')
+        items = self._extract_ac_items(body)
+        if not items:
+            messagebox.showinfo('Review', 'No AC/DoD criteria to review.')
+            return
+        folder = dpath.resolve().parent
+        opencode_path = self._find_opencode()
+        if not opencode_path:
+            messagebox.showinfo(
+                'Review', 'opencode not found on PATH.\n'
+                'Install it or launch a session manually with:\n'
+                f'  cd /d "{folder}" && opencode --prompt "..."')
+            return
+        crit = '\n'.join(f'  {i+1}. {s}' for i, s in enumerate(items))
+        prompt = (
+            f"You are an INDEPENDENT REVIEWER. You have no prior context about "
+            f"this task. Your job is to verify each AC/DoD criterion independently.\n\n"
+            f"Ticket: {ticket}\n"
+            f"Discipline file: {dpath}\n\n"
+            f"Read the discipline file first, then read the source code. "
+            f"Verify each criterion below strictly:\n\n"
+            f"{crit}\n\n"
+            f"For each criterion:\n"
+            f"  1. Find the relevant source files\n"
+            f"  2. Verify the implementation actually satisfies it\n"
+            f"  3. Report PASS or FAIL with evidence\n\n"
+            f"After verifying ALL criteria, update the discipline file:\n"
+            f"  - Mark each criterion [x] (change '- [ ]' to '- [x]')\n"
+            f"  - Add your findings under ## Evidence Ledger\n"
+            f"  - In the YAML frontmatter (between ---), change 'gate: pending' to "
+            f"'gate: pass' if ALL criteria pass, or 'gate: fail' if any fail\n"
+            f"  - Change 'phase: implement' to 'phase: review'\n"
+            f"Do NOT rely on the implementer's word. Verify from source."
+        )
+        cmd = (f'cd /d "{folder}" && "{opencode_path}" --prompt "{prompt}"')
+        full = f'cmd.exe /K {cmd}'
+        try:
+            subprocess.Popen(full, creationflags=subprocess.CREATE_NEW_CONSOLE,
+                             shell=False)
+            self._log_msg(f'Review launched for ticket={ticket}', 'ok')
+        except Exception as e:
+            self._log_msg(f'Failed to launch review: {e}', 'err')
+
     def _discipline_file(self) -> Path:
         """Return the absolute discipline file path from config, or cwd fallback."""
         p = self.discipline_path.get().strip()
@@ -2003,6 +2059,8 @@ F9              Update --check"""
         ttk.Button(bar, text="Init", command=do_init).pack(side="left", padx=2)
         ttk.Button(bar, text="Refresh", command=refresh).pack(side="left", padx=2)
         ttk.Button(bar, text="Save", command=do_save).pack(side="left", padx=2)
+        ttk.Separator(bar, orient='vertical').pack(side="left", fill='y', padx=6)
+        ttk.Button(bar, text="Review \U0001f50d", command=self._launch_review).pack(side="left", padx=2)
         ttk.Button(bar, text="Pass \u2713", command=lambda: gate("pass")).pack(side="right", padx=2)
         ttk.Button(bar, text="Fail \u2717", command=lambda: gate("fail")).pack(side="right", padx=2)
         refresh()
