@@ -140,7 +140,8 @@ The discipline file lives wherever you point the GUI (config-pinned absolute pat
 Self-reported progress is weak — the LLM can mark `[x]` without actually satisfying the criterion. The Discipline panel includes a **Review 🔍** button that launches a separate opencode session as an independent reviewer:
 
 - The reviewer has **zero prior context** — no knowledge of the implementation session
-- It reads the discipline file, reads the source code, and verifies each criterion independently
+- The prompt explicitly lists every `.map.md` file in the project (same format as "Open in OpenCode"), so the reviewer reads maps first (~3,300 tokens per file) instead of reading full source (~45,000 tokens)
+- It reads the discipline file, reads the source code via maps, and verifies each criterion independently
 - It updates the discipline file with findings: marking each criterion pass/fail, adding evidence, and setting the gate
 - Because it's a completely separate session, it doesn't share any attention decay or confirmation bias with the implementer
 
