@@ -104,6 +104,9 @@ class LLMEShowYouGUI:
         self.major_only = tk.BooleanVar(value=False)
         self.all_langs = tk.BooleanVar(value=False)
         self.watch_mode = tk.BooleanVar(value=False)
+        self.include_ac_dod = tk.BooleanVar(value=True)
+        self.discipline_path = tk.StringVar(value='')
+        self.deepseek_key = tk.StringVar(value='')
         self.recent_files: list[str] = []
 
         self._cancel_flag = False
@@ -127,6 +130,7 @@ class LLMEShowYouGUI:
         self._bind_events()
         self._poll_queue()
         self.root.protocol('WM_DELETE_WINDOW', self._on_close)
+        self.root.after(200, self._ensure_deepseek_key)
         self.root.mainloop()
 
     # ##[Configuration Persistence]
@@ -142,8 +146,16 @@ class LLMEShowYouGUI:
             self.combined.set(data.get('combined', False))
             self.all_langs.set(data.get('all_langs', False))
             self.watch_mode.set(data.get('watch_mode', False))
+            self.discipline_path.set(data.get('discipline_path', ''))
+            self.deepseek_key.set(data.get('deepseek_key', ''))
         except Exception:
             self.recent_files = []
+        # Env var wins if set; otherwise seed env from stored key.
+        env_key = os.environ.get('DEEPSEEK_API_KEY', '')
+        if env_key:
+            self.deepseek_key.set(env_key)
+        elif self.deepseek_key.get():
+            os.environ['DEEPSEEK_API_KEY'] = self.deepseek_key.get()
 
     def _save_config(self) -> None:
         try:
@@ -156,8 +168,15 @@ class LLMEShowYouGUI:
                 'combined': self.combined.get(),
                 'all_langs': self.all_langs.get(),
                 'watch_mode': self.watch_mode.get(),
+                'discipline_path': self.discipline_path.get(),
+                'deepseek_key': self.deepseek_key.get(),
             }
             CONFIG_FILE.write_text(json.dumps(data, indent=2), encoding='utf-8')
+            # Best-effort: restrict perms since the file now holds a secret.
+            try:
+                os.chmod(CONFIG_FILE, 0o600)
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -169,9 +188,95 @@ class LLMEShowYouGUI:
         self._rebuild_recent_menu()
         self._save_config()
 
+    # ##[DeepSeek API Key]
+
+    @staticmethod
+    def _mask_key(key: str) -> str:
+        if not key:
+            return '(not set)'
+        if len(key) <= 8:
+            return '*' * len(key)
+        return f'{key[:4]}\u2026{key[-4:]} ({len(key)} chars)'
+
+    def _prompt_deepseek_key(self, force: bool = False) -> bool:
+        """Ask the user for the DeepSeek API key. Persists + exports to env.
+
+        Returns True if a key is set afterwards. When force=False and a key is
+        already present, the dialog is pre-filled so the user can keep it.
+        """
+        from tkinter import simpledialog
+        current = self.deepseek_key.get()
+        prompt = ('Enter your DeepSeek API key.\n'
+                  'Get one at https://platform.deepseek.com/api_keys\n\n'
+                  f'Current: {self._mask_key(current)}\n'
+                  '(Leave blank to cancel; stored locally in '
+                  f'{CONFIG_FILE.name})')
+        val = simpledialog.askstring('DeepSeek API Key', prompt,
+                                     parent=self.root, show='*',
+                                     initialvalue='' if force else current)
+        if val is None or not val.strip():
+            return bool(self.deepseek_key.get())
+        key = val.strip()
+        self.deepseek_key.set(key)
+        os.environ['DEEPSEEK_API_KEY'] = key
+        self._save_config()
+        self._status(f'DeepSeek API key set: {self._mask_key(key)}')
+        return True
+
+    def _clear_deepseek_key(self) -> None:
+        from tkinter import messagebox
+        if not messagebox.askyesno('Clear DeepSeek API Key',
+                                   'Remove the stored DeepSeek API key?'):
+            return
+        self.deepseek_key.set('')
+        os.environ.pop('DEEPSEEK_API_KEY', None)
+        self._save_config()
+        self._status('DeepSeek API key cleared.')
+
+    def _ensure_deepseek_key(self) -> None:
+        """Prompt once on startup if no key is available from env or config."""
+        if self.deepseek_key.get() or os.environ.get('DEEPSEEK_API_KEY'):
+            return
+        from tkinter import messagebox
+        if messagebox.askyesno(
+                'DeepSeek API Key',
+                'No DeepSeek API key found.\n\n'
+                'The SAW/OpenCode harness and DeepSeek-backed launches need one.\n'
+                'Set it now?'):
+            self._prompt_deepseek_key(force=True)
+
+    def _setup_styles(self) -> None:
+        self.root.configure(bg='#f0f0f0')
+        style = ttk.Style()
+
+        default_font = ('Segoe UI', 9)
+        bold_font = ('Segoe UI', 9, 'bold')
+
+        style.configure('.', font=default_font)
+
+        style.configure('TButton', padding=(8, 4))
+        style.configure('Primary.TButton', padding=(8, 4), font=bold_font)
+
+        style.configure('TLabelframe.Label', font=bold_font, foreground='#444')
+
+        style.configure('TEntry', padding=(4, 3))
+
+        style.configure('TSpinbox', padding=(4, 3))
+
+        style.configure('Treeview', rowheight=26, font=default_font,
+                        background='white')
+        style.configure('Treeview.Heading', font=bold_font, padding=(4, 4))
+        style.map('Treeview',
+                  background=[('selected', '#0078D4')],
+                  foreground=[('selected', 'white')])
+
+        style.configure('Horizontal.TProgressbar', thickness=8,
+                        troughcolor='#e0e0e0', background='#0078D4')
+
     # ##[UI Building]
 
     def _build_ui(self) -> None:
+        self._setup_styles()
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(4, weight=1)
         self.root.rowconfigure(5, weight=0)
@@ -234,6 +339,13 @@ class LLMEShowYouGUI:
                             command=self._copy_opencode_cmd_selected)
         tools_m.add_command(label='Copy claude Command',
                             command=self._copy_claude_code_cmd_selected)
+
+        settings_m = tk.Menu(mb, tearoff=False)
+        mb.add_cascade(label='Settings', menu=settings_m)
+        settings_m.add_command(label='Set DeepSeek API Key\u2026',
+                               command=self._prompt_deepseek_key)
+        settings_m.add_command(label='Clear DeepSeek API Key',
+                               command=self._clear_deepseek_key)
 
         help_m = tk.Menu(mb, tearoff=False)
         mb.add_cascade(label='Help', menu=help_m)
@@ -305,6 +417,7 @@ class LLMEShowYouGUI:
         ttk.Checkbutton(f, text='Major Only', variable=self.major_only).grid(row=0, column=3, sticky='w', padx=(0, 8))
         ttk.Checkbutton(f, text='All Languages', variable=self.all_langs).grid(row=0, column=4, sticky='w', padx=(0, 8))
         ttk.Checkbutton(f, text='Watch Mode', variable=self.watch_mode).grid(row=0, column=5, sticky='w', padx=(0, 8))
+        ttk.Checkbutton(f, text='AC/DoD', variable=self.include_ac_dod).grid(row=1, column=0, sticky='w', padx=(0, 8))
 
         ttk.Label(f, text='Min lines:').grid(row=0, column=6, sticky='e', padx=(8, 4))
         s = ttk.Spinbox(f, from_=0, to=9999, width=6, textvariable=self.min_lines)
@@ -321,6 +434,7 @@ class LLMEShowYouGUI:
         ttk.Button(f, text='Update \u2013check', command=self._cmd_update_check, width=14).pack(side='left', padx=(0, 3))
         ttk.Button(f, text='Graph', command=self._cmd_graph, width=10).pack(side='left', padx=(0, 3))
         ttk.Button(f, text='Cost', command=self._cmd_cost, width=8).pack(side='left', padx=(0, 3))
+        ttk.Button(f, text='Discipline', command=self.open_discipline_panel, width=11).pack(side='left', padx=(0, 3))
 
         ttk.Separator(f, orient='vertical').pack(side='right', fill='y', padx=6)
         ttk.Button(f, text='Help', command=self._show_help, width=8).pack(side='right', padx=(0, 3))
@@ -350,6 +464,14 @@ class LLMEShowYouGUI:
         self._tree.column('pct', width=50, anchor='e', stretch=False)
         self._tree.column('status', width=80, anchor='center', stretch=False)
         self._tree.column('mapfile', width=160, stretch=False)
+
+        self._tree.tag_configure('fresh', foreground=_COLORS['fresh'])
+        self._tree.tag_configure('stale', foreground=_COLORS['stale'])
+        self._tree.tag_configure('mapped', foreground=_COLORS['mapped'])
+        self._tree.tag_configure('missing', foreground=_COLORS['missing'])
+        self._tree.tag_configure('error', foreground=_COLORS['error'])
+        self._tree.tag_configure('evenrow', background='#f5f5f5')
+        self._tree.tag_configure('oddrow', background='#ffffff')
 
         vsb = ttk.Scrollbar(top_f, orient='vertical', command=self._tree.yview)
         self._tree.configure(yscrollcommand=vsb.set)
@@ -633,9 +755,11 @@ class LLMEShowYouGUI:
             map_label = '\u2014 missing'
 
         lang_info = f" [{fm.language}]" if fm and fm.language != 'python' else ''
+        row_idx = len(self._results)
+        row_tag = 'evenrow' if row_idx % 2 == 0 else 'oddrow'
         iid = self._tree.insert('', 'end', text=name + lang_info,
                                  values=(str(lines), str(syms), saved_str, pct_str, status, map_label),
-                                 tags=(tag,))
+                                 tags=(tag, row_tag))
         self._result_id_map[src.resolve()] = iid
 
     def _on_worker_done(self, extra: str = '') -> None:
@@ -1300,6 +1424,7 @@ class LLMEShowYouGUI:
         if not items:
             return
         prompt, folder, map_names, py_names = self._build_multi_prompt(items)
+        prompt = self._append_ac_dod(prompt, folder)
 
         opencode_path = self._find_opencode()
         if not opencode_path:
@@ -1332,6 +1457,7 @@ class LLMEShowYouGUI:
         if not items:
             return
         prompt, folder, map_names, py_names = self._build_multi_prompt(items)
+        prompt = self._append_ac_dod(prompt, folder)
 
         claude_path = self._find_claude_code()
         if not claude_path:
@@ -1365,6 +1491,7 @@ class LLMEShowYouGUI:
         if not items:
             return
         prompt, folder, _map_names, _py_names = self._build_multi_prompt(items)
+        prompt = self._append_ac_dod(prompt, folder)
         self._copy_cmd_to_clipboard(folder, prompt)
 
     def _copy_claude_code_cmd_selected(self) -> None:
@@ -1372,6 +1499,7 @@ class LLMEShowYouGUI:
         if not items:
             return
         prompt, folder, _map_names, _py_names = self._build_multi_prompt(items)
+        prompt = self._append_ac_dod(prompt, folder)
         self._copy_claude_cmd_to_clipboard(folder, prompt)
 
     def _copy_cmd_to_clipboard(self, folder: Path, prompt: str) -> None:
@@ -1399,6 +1527,96 @@ class LLMEShowYouGUI:
             self._log_msg('claude command copied to clipboard', 'ok')
         except Exception as e:
             self._log_msg(f'Clipboard error: {e}', 'err')
+
+    def _append_ac_dod(self, prompt: str, folder: Path) -> str:
+        """If enabled, append AC/DoD protocol + feedback instructions."""
+        if not self.include_ac_dod.get():
+            return prompt
+
+        criteria_line = ''
+        feedback = ''
+        dpath = self._find_discipline(folder)
+        if dpath is not None:
+            p_abs = dpath.resolve()
+            try:
+                import discipline
+                fm, body = discipline._load(str(p_abs))
+                ticket = fm.get('ticket', '?')
+                items = self._extract_ac_items(body)
+                if items:
+                    crit = '; '.join(items).replace('"', "'")
+                    criteria_line = f" Active ticket={ticket}. AC/DoD criteria: {crit}."
+                feedback = (
+                    f" AC/DoD file: {p_abs}. Update this file as you work: mark "
+                    f"criteria with [x] when done, add lines under ## Evidence "
+                    f"Ledger (format: - TIMESTAMP [role] what was done), and "
+                    f"update the gate status when complete. Read the file first "
+                    f"to see its current state."
+                )
+                self._log_msg(
+                    f'AC/DoD appended: ticket={ticket}, {len(items)} criteria', 'ok')
+            except Exception as e:
+                self._log_msg(f'AC/DoD parse error: {e}', 'err')
+        else:
+            self._log_msg('AC/DoD: no .discipline.md found (protocol still applied)', 'warn')
+
+        prompt += (
+            " --- AC/DoD PROTOCOL --- Before finishing, define and satisfy an "
+            "Acceptance Criteria / Definition of Done. State the acceptance "
+            "criteria explicitly, then verify each one (build passes, tests pass, "
+            "files exist as specified). Do NOT report the task done until every "
+            "criterion is met and verified."
+            + criteria_line
+            + feedback
+        )
+        return prompt
+
+    def _discipline_file(self) -> Path:
+        """Return the absolute discipline file path from config, or cwd fallback."""
+        p = self.discipline_path.get().strip()
+        if p:
+            return Path(p).resolve()
+        return Path.cwd() / '.discipline.md'
+
+    @staticmethod
+    def _extract_ac_items(body: str) -> list[str]:
+        """Return only the checklist items under the '## AC/DoD' section."""
+        items: list[str] = []
+        in_ac = False
+        for ln in body.splitlines():
+            s = ln.strip()
+            if s.startswith('## '):
+                in_ac = s[3:].strip().lower().startswith('ac/dod')
+                continue
+            if in_ac and (s.startswith('- [ ]') or s.startswith('- [x]')):
+                items.append(s)
+        return items
+
+    def _find_discipline(self, start: Path) -> Optional[Path]:
+        """Return the configured discipline file if it exists, otherwise scan
+        the selected-files folder tree and cwd."""
+        dpath = self._discipline_file()
+        if dpath.exists():
+            return dpath
+        roots = [start, Path.cwd()]
+        seen: set[Path] = set()
+        for root in roots:
+            try:
+                cur = root.resolve()
+            except Exception:
+                continue
+            for _ in range(8):
+                if cur in seen:
+                    break
+                seen.add(cur)
+                dpath = cur / '.discipline.md'
+                if dpath.exists():
+                    return dpath
+                parent = cur.parent
+                if parent == cur:
+                    break
+                cur = parent
+        return None
 
     def _find_opencode(self) -> Optional[str]:
         exe = shutil.which('opencode')
@@ -1706,8 +1924,88 @@ F9              Update --check"""
             '  Full source:    ~45,000 tokens\n'
             '  Map only:        ~3,300 tokens\n'
             '  Savings per read: ~42,000 tokens (~92% reduction)\n\n'
-            'Built for opencode',
+            'Built for opencode\n\n'
+            'Made by Asif Serajian',
         )
+
+    # ##[Discipline Scratchpad]
+
+    def _discipline_path_resolved(self) -> str:
+        return str(self._discipline_file().resolve())
+
+    def open_discipline_panel(self):
+        import tkinter as tk
+        from tkinter import ttk, simpledialog, messagebox, filedialog as fd
+        import discipline
+
+        win = tk.Toplevel(self.root); win.title("Discipline Scratchpad"); win.geometry("760x560")
+        bar = ttk.Frame(win); bar.pack(fill="x", padx=6, pady=6)
+        txt = tk.Text(win, wrap="word", font=("Consolas", 10),
+                      bg="#1e1e1e", fg="#dcdcdc", insertbackground="#dcdcdc")
+        txt.pack(fill="both", expand=True, padx=6, pady=(0, 6))
+        status = ttk.Label(win, text=""); status.pack(fill="x", padx=6, pady=(0, 6))
+        path_label = ttk.Label(win, text="", foreground="#888")
+        path_label.pack(fill="x", padx=6, pady=(0, 4))
+
+        def dfile() -> str:
+            return self._discipline_path_resolved()
+
+        def refresh():
+            p = dfile()
+            try:
+                with open(p, encoding="utf-8") as f:
+                    txt.delete("1.0", "end"); txt.insert("1.0", f.read())
+                s = discipline.status(p)
+                warn = "  [CEILING TRIPPED -> @tdm]" if s.get("ceiling_tripped") else ""
+                status.config(text=f"{s.get('ticket','-')} | phase={s.get('phase')} "
+                                   f"gate={s.get('gate')} attempts={s.get('attempts')} "
+                                   f"AC {s.get('ac_done')}/{s.get('ac_total')}{warn}")
+            except FileNotFoundError:
+                txt.delete("1.0", "end"); txt.insert("1.0", "(no .discipline.md — click Init)")
+                status.config(text="no active task")
+            path_label.config(text=f"File: {p}")
+
+        def set_file():
+            p = fd.askopenfilename(title="Select .discipline.md",
+                                   filetypes=[("discipline", "*.md"), ("All", "*.*")],
+                                   parent=win)
+            if p:
+                self.discipline_path.set(p)
+                refresh()
+
+        def do_init():
+            p = dfile()
+            t = simpledialog.askstring("Init", "Ticket ID (e.g. NQ-123):", parent=win)
+            if not t:
+                return
+            ac = simpledialog.askstring("Init", "AC/DoD, one per line:", parent=win)
+            crit = [c.strip() for c in (ac or "").splitlines() if c.strip()]
+            try:
+                discipline.init_discipline(t, crit, path=p, overwrite=True)
+                self.discipline_path.set(p)
+                refresh()
+            except Exception as e:
+                messagebox.showerror("Init failed", str(e), parent=win)
+
+        def do_save():
+            with open(dfile(), "w", encoding="utf-8") as f:
+                f.write(txt.get("1.0", "end-1c"))
+            refresh()
+
+        def gate(state):
+            try:
+                discipline.set_gate(gate=state, note=f"manual gate={state} via GUI",
+                                    bump_attempt=(state == "fail"), path=dfile()); refresh()
+            except Exception as e:
+                messagebox.showerror("Gate", str(e), parent=win)
+
+        ttk.Button(bar, text="Set File...", command=set_file).pack(side="left", padx=2)
+        ttk.Button(bar, text="Init", command=do_init).pack(side="left", padx=2)
+        ttk.Button(bar, text="Refresh", command=refresh).pack(side="left", padx=2)
+        ttk.Button(bar, text="Save", command=do_save).pack(side="left", padx=2)
+        ttk.Button(bar, text="Pass \u2713", command=lambda: gate("pass")).pack(side="right", padx=2)
+        ttk.Button(bar, text="Fail \u2717", command=lambda: gate("fail")).pack(side="right", padx=2)
+        refresh()
 
 
 if __name__ == '__main__':
