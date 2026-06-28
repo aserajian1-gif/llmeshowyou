@@ -1601,7 +1601,7 @@ class LLMEShowYouGUI:
         scan_root = Path.cwd()
         skip_dirs = {'node_modules', '__pycache__', '.git', '.opencode',
                      '.claude', 'build', 'dist', '.aider', 'model_temp',
-                     'map_cache', '__pycache__', 'venv', '.venv'}
+                     'map_cache', 'venv', '.venv'}
         map_sources = []
         for m in sorted(scan_root.rglob('*.map.md')):
             if any(p.name in skip_dirs or p.name.startswith('.')
@@ -1610,6 +1610,8 @@ class LLMEShowYouGUI:
             try:
                 rel = str(m.relative_to(scan_root)).replace('\\', '/')
                 src = rel.removesuffix('.map.md')
+                if m.parent != scan_root or not (scan_root / src).exists():
+                    continue
                 map_sources.append((rel, src))
             except Exception:
                 continue
