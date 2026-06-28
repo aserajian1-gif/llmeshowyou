@@ -1589,11 +1589,12 @@ class LLMEShowYouGUI:
         if not items:
             messagebox.showinfo('Review', 'No AC/DoD criteria to review.')
             return
-        src_folder = self.source_folder.get().strip()
-        scan_roots = {Path.cwd(), dpath.resolve().parent}
-        if src_folder:
-            scan_roots.add(Path(src_folder))
-        folder = Path.cwd()
+        crit = '; '.join(s for s in items)
+        sel_items = self._get_selected_items()
+        if not sel_items:
+            messagebox.showinfo('Review', 'Select a mapped file in the results tree first.')
+            return
+        mprompt, folder, _map_names, _py_names = self._build_multi_prompt(sel_items)
         opencode_path = self._find_opencode()
         if not opencode_path:
             messagebox.showinfo(
@@ -1601,44 +1602,7 @@ class LLMEShowYouGUI:
                 'Install it or launch a session manually with:\n'
                 f'  cd /d "{folder}" && opencode --prompt "..."')
             return
-        crit = '; '.join(s for s in items)
-        skip_dirs = {'node_modules', '__pycache__', '.git', '.opencode',
-                     '.claude', 'build', 'dist', '.aider', 'model_temp',
-                     'map_cache', 'venv', '.venv'}
-        map_sources = []
-        for sr in scan_roots:
-            for m in sorted(sr.rglob('*.map.md')):
-                try:
-                    rel = str(m.relative_to(sr)).replace('\\', '/')
-                except ValueError:
-                    continue
-                if any(p.name in skip_dirs or p.name.startswith('.')
-                       for p in Path(rel).parents):
-                    continue
-                src = rel.removesuffix('.map.md')
-                if not (sr / src).exists():
-                    continue
-                map_sources.append((rel, src))
-        if map_sources:
-            if len(map_sources) == 1:
-                mn, pn = map_sources[0]
-                map_ref = (
-                    f"Read the file '{mn}' first to understand the structure of "
-                    f"'{pn}', then verify it. "
-                    f"The map shows classes, functions, their signatures, line ranges, "
-                    f"imports, constants, section markers, and TODOs. "
-                )
-            else:
-                maps_str = ', '.join(mn for mn, _ in map_sources)
-                files_str = ', '.join(pn for _, pn in map_sources)
-                map_ref = (
-                    f"Read the maps '{maps_str}' (for {files_str}) first to understand "
-                    f"the structure, then verify each. "
-                    f"Each map shows classes, functions, their signatures, line ranges, "
-                    f"imports, constants, section markers, and TODOs. "
-                )
-        else:
-            map_ref = ''
+        map_ref = (mprompt.rstrip('. ') + '. ' if mprompt else '')
         prompt = (
             f"{map_ref}"
             f"When reading a .map.md file to understand a source file, and additional "
