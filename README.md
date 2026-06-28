@@ -1,6 +1,6 @@
 # llmeshowyou
 
-**Language-aware file-to-markdown mapper** that generates compact structural maps of source files for LLM consumption. Maps reduce token costs by ~80% compared to feeding raw source code.
+**Language-aware file-to-markdown mapper** with AC/DoD discipline scratchpad. Generates compact structural maps of source files for LLM consumption, and provides a process-state harness for LLM task tracking — ticket, acceptance criteria, evidence ledger, gate state. Maps reduce token costs by ~80% compared to feeding raw source code.
 
 Instead of dumping entire source files into your LLM context, llmeshowyou extracts classes, functions, signatures, imports, constants, section markers, and TODOs into a token-efficient `.map.md` file. The LLM reads the map to navigate the codebase, then reads only the specific lines it needs.
 
@@ -26,7 +26,8 @@ These are actual measured numbers from a real edit session adding a Claude Code 
 - **File watcher** — auto-regenerate maps on source changes
 - **Git hooks** — post-commit auto-update integration
 - **Cost tracker** — tracks tokens saved per session
-- **Windows GUI** — tkinter-based with tree view, opencode/Claude Code launch, and context menu
+- **Windows GUI** — tkinter-based with tree view, opencode/Claude Code launch, context menu, and AC/DoD discipline panel
+- **Discipline scratchpad** — ticket-based AC/DoD tracking with evidence ledger, gate state, and attempt ceiling; auto-injected into opencode prompts
 
 ## Quick Start
 
@@ -82,6 +83,48 @@ Configure in `opencode.json`:
 ## GUI
 
 The Windows GUI (`llmeshowyou_gui.py`) provides a tree view of mapped files with one-click launch to opencode, Claude Code, or your editor — with the map-aware prompt pre-loaded.
+
+Includes an **AC/DoD discipline scratchpad** panel (click **Discipline** in the toolbar):
+- Init a ticket with a checklist of acceptance criteria
+- The criteria and the AC/DoD protocol are auto-injected into opencode/Claude Code prompts when you launch
+- The LLM updates the discipline file directly as it completes work: marking `[x]` on done items, appending evidence, and advancing gates
+- Failed attempts auto-escalate to HITL after a configurable ceiling
+
+## AC/DoD Discipline Scratchpad
+
+`discipline.py` is a lightweight process-state harness that externalizes LLM task tracking to a markdown file:
+
+```
+---
+ticket: NQ-123
+phase: implement
+gate: pending
+attempts: 0
+---
+
+## AC/DoD
+- [ ] Add feature X
+- [ ] Write tests for X
+
+## Evidence Ledger
+- 2026-06-28T02:05:36Z [agent] Feature X implemented
+
+## Open Issues
+_none_
+
+## Gate Log
+- [init] spec → implement (pending QAS)
+```
+
+The discipline file lives wherever you point the GUI (config-pinned absolute path). The LLM reads and writes it during the session — no shell commands needed, just file read/write tools.
+
+**API functions:**
+- `init_discipline(ticket, criteria)` — create a new ticket
+- `toggle_ac(substring, done=True)` — check/uncheck an item
+- `log_evidence(role, message)` — append to ledger
+- `set_gate(phase, gate, note)` — advance workflow state
+- `read_compact()` — token-efficient view for LLM context (~150–250 tokens)
+- `status()` — machine-readable state for the GUI status bar
 
 ## Dependencies
 
