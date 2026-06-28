@@ -1599,6 +1599,14 @@ class LLMEShowYouGUI:
             return
         crit = '; '.join(s for s in items)
         prompt = (
+            f"Read .map.md files first to understand each source file's "
+            f"structure before reading it. Maps show classes, functions, "
+            f"signatures, line ranges, imports, constants, section markers, "
+            f"and TODOs — use them to identify the specific lines to read "
+            f"from source rather than reading entire files. "
+            f"When a source file references other files in imports, search for "
+            f"their .map.md files first and read those before falling back to "
+            f"full source. --- "
             f"You are an INDEPENDENT REVIEWER. You have no prior context. "
             f"Your job is to verify each AC/DoD criterion by reading source. "
             f"Ticket: {ticket}. Discipline file: {dpath}. "
