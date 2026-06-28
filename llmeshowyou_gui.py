@@ -1597,26 +1597,17 @@ class LLMEShowYouGUI:
                 'Install it or launch a session manually with:\n'
                 f'  cd /d "{folder}" && opencode --prompt "..."')
             return
-        crit = '\n'.join(f'  {i+1}. {s}' for i, s in enumerate(items))
+        crit = '; '.join(s for s in items)
         prompt = (
-            f"You are an INDEPENDENT REVIEWER. You have no prior context about "
-            f"this task. Your job is to verify each AC/DoD criterion independently.\n\n"
-            f"Ticket: {ticket}\n"
-            f"Discipline file: {dpath}\n\n"
-            f"Read the discipline file first, then read the source code. "
-            f"Verify each criterion below strictly:\n\n"
-            f"{crit}\n\n"
-            f"For each criterion:\n"
-            f"  1. Find the relevant source files\n"
-            f"  2. Verify the implementation actually satisfies it\n"
-            f"  3. Report PASS or FAIL with evidence\n\n"
-            f"After verifying ALL criteria, update the discipline file:\n"
-            f"  - Mark each criterion [x] (change '- [ ]' to '- [x]')\n"
-            f"  - Add your findings under ## Evidence Ledger\n"
-            f"  - In the YAML frontmatter (between ---), change 'gate: pending' to "
-            f"'gate: pass' if ALL criteria pass, or 'gate: fail' if any fail\n"
-            f"  - Change 'phase: implement' to 'phase: review'\n"
-            f"Do NOT rely on the implementer's word. Verify from source."
+            f"You are an INDEPENDENT REVIEWER. You have no prior context. "
+            f"Your job is to verify each AC/DoD criterion by reading source. "
+            f"Ticket: {ticket}. Discipline file: {dpath}. "
+            f"Criteria: {crit}. "
+            f"For each, read relevant source and report PASS or FAIL with evidence. "
+            f"After verifying ALL: mark each [x], add findings under ## Evidence "
+            f"Ledger, gate=pass if all pass gate=fail if any fail, "
+            f"phase=review. Do NOT rely on implementer's word. "
+            f"Verify from source firsthand."
         )
         cmd = (f'cd /d "{folder}" && "{opencode_path}" --prompt "{prompt}"')
         full = f'cmd.exe /K {cmd}'
