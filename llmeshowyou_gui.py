@@ -1589,7 +1589,7 @@ class LLMEShowYouGUI:
         if not items:
             messagebox.showinfo('Review', 'No AC/DoD criteria to review.')
             return
-        folder = dpath.resolve().parent
+        folder = scan_root
         opencode_path = self._find_opencode()
         if not opencode_path:
             messagebox.showinfo(
@@ -1598,24 +1598,55 @@ class LLMEShowYouGUI:
                 f'  cd /d "{folder}" && opencode --prompt "..."')
             return
         crit = '; '.join(s for s in items)
+        scan_root = Path.cwd()
+        skip_dirs = {'node_modules', '__pycache__', '.git', '.opencode',
+                     '.claude', 'build', 'dist', '.aider', 'model_temp',
+                     'map_cache', '__pycache__', 'venv', '.venv'}
+        map_sources = []
+        for m in sorted(scan_root.rglob('*.map.md')):
+            if any(p.name in skip_dirs or p.name.startswith('.')
+                   for p in m.relative_to(scan_root).parents):
+                continue
+            try:
+                rel = str(m.relative_to(scan_root)).replace('\\', '/')
+                src = rel.removesuffix('.map.md')
+                map_sources.append((rel, src))
+            except Exception:
+                continue
+        if map_sources:
+            if len(map_sources) == 1:
+                mn, pn = map_sources[0]
+                map_ref = (
+                    f"Read the file '{mn}' first to understand the structure of "
+                    f"'{pn}', then verify it. "
+                    f"The map shows classes, functions, their signatures, line ranges, "
+                    f"imports, constants, section markers, and TODOs. "
+                )
+            else:
+                maps_str = ', '.join(mn for mn, _ in map_sources)
+                files_str = ', '.join(pn for _, pn in map_sources)
+                map_ref = (
+                    f"Read the maps '{maps_str}' (for {files_str}) first to understand "
+                    f"the structure, then verify each. "
+                    f"Each map shows classes, functions, their signatures, line ranges, "
+                    f"imports, constants, section markers, and TODOs. "
+                )
+        else:
+            map_ref = ''
         prompt = (
-            f"Read .map.md files first to understand each source file's "
-            f"structure before reading it. Maps show classes, functions, "
-            f"signatures, line ranges, imports, constants, section markers, "
-            f"and TODOs — use them to identify the specific lines to read "
-            f"from source rather than reading entire files. "
-            f"When a source file references other files in imports, search for "
-            f"their .map.md files first and read those before falling back to "
-            f"full source. --- "
-            f"You are an INDEPENDENT REVIEWER. You have no prior context. "
-            f"Your job is to verify each AC/DoD criterion by reading source. "
-            f"Ticket: {ticket}. Discipline file: {dpath}. "
-            f"Criteria: {crit}. "
-            f"For each, read relevant source and report PASS or FAIL with evidence. "
+            f"{map_ref}"
+            f"When reading a .map.md file to understand a source file, and additional "
+            f"files are referenced in the code or imports, first search for "
+            f"the corresponding .map.md files and read those maps before falling back "
+            f"to reading the full source. "
+            f"Maps provide classes, functions, signatures, line ranges, imports, "
+            f"constants, section markers, and TODOs \u2014 use them to identify the "
+            f"specific lines to read from source rather than reading entire files. --- "
+            f"Reviewer — ticket={ticket} discipline={dpath} criteria={crit}. "
+            f"For each criterion read relevant source and report PASS or FAIL. "
             f"After verifying ALL: mark each [x], add findings under ## Evidence "
             f"Ledger, gate=pass if all pass gate=fail if any fail, "
-            f"phase=review. Do NOT rely on implementer's word. "
-            f"Verify from source firsthand."
+            f"phase=review. Do NOT trust implementer — verify from source."
         )
         cmd = (f'cd /d "{folder}" && "{opencode_path}" --prompt "{prompt}"')
         full = f'cmd.exe /K {cmd}'
