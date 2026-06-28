@@ -1612,11 +1612,16 @@ class LLMEShowYouGUI:
             f"Maps provide classes, functions, signatures, line ranges, imports, "
             f"constants, section markers, and TODOs \u2014 use them to identify the "
             f"specific lines to read from source rather than reading entire files. --- "
-            f"Reviewer — ticket={ticket} discipline={dpath} criteria={crit}. "
-            f"For each criterion read relevant source and report PASS or FAIL. "
-            f"After verifying ALL: mark each [x], add findings under ## Evidence "
-            f"Ledger, gate=pass if all pass gate=fail if any fail, "
-            f"phase=review. Do NOT trust implementer — verify from source."
+             f"Reviewer — ticket={ticket} discipline={dpath} criteria={crit}. "
+             f"For each criterion read relevant source and report PASS or FAIL. "
+             f"After verifying ALL criteria, EDIT the file {dpath} on disk: "
+             f"Read it first, then write back with: "
+             f"mark each criterion [x] (change '- [ ]' to '- [x]'), "
+             f"add your PASS/FAIL findings as new lines under ## Evidence Ledger, "
+             f"gate=pass if all pass gate=fail if any fail, "
+             f"phase=review (edit the YAML frontmatter between ---). "
+             f"Use your file read/write tools to make these changes directly. "
+             f"Do NOT trust implementer — verify from source."
         )
         cmd = (f'cd /d "{folder}" && "{opencode_path}" --prompt "{prompt}"')
         full = f'cmd.exe /K {cmd}'
