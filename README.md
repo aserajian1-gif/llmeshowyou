@@ -26,8 +26,8 @@ These are actual measured numbers from a real edit session adding a Claude Code 
 - **File watcher** — auto-regenerate maps on source changes
 - **Git hooks** — post-commit auto-update integration
 - **Cost tracker** — tracks tokens saved per session
-- **Windows GUI** — tkinter-based with tree view, opencode/Claude Code launch, context menu, and AC/DoD discipline panel
-- **Discipline scratchpad** — ticket-based AC/DoD tracking with evidence ledger, gate state, and attempt ceiling; auto-injected into opencode prompts
+- **Windows GUI** — tkinter-based with tree view, opencode/Claude Code launch, context menu, AC/DoD discipline panel, and independent review agent
+- **Discipline scratchpad** — ticket-based AC/DoD tracking with evidence ledger, gate state, attempt ceiling, and separate-reviewer verification; auto-injected into opencode prompts
 
 ## Quick Start
 
@@ -89,6 +89,7 @@ Includes an **AC/DoD discipline scratchpad** panel (click **Discipline** in the 
 - The criteria and the AC/DoD protocol are auto-injected into opencode/Claude Code prompts when you launch
 - The LLM updates the discipline file directly as it completes work: marking `[x]` on done items, appending evidence, and advancing gates
 - Failed attempts auto-escalate to HITL after a configurable ceiling
+- **Review 🔍** launches a separate opencode session as an independent reviewer with zero prior context — `producer ≠ grader`
 
 ## AC/DoD Discipline Scratchpad
 
@@ -125,6 +126,25 @@ The discipline file lives wherever you point the GUI (config-pinned absolute pat
 - `set_gate(phase, gate, note)` — advance workflow state
 - `read_compact()` — token-efficient view for LLM context (~150–250 tokens)
 - `status()` — machine-readable state for the GUI status bar
+
+### Why This Works
+
+**Externalized state** — LLM attention decays over long conversations. Writing ticket, phase, and gate to a file instead of holding it in context prevents the model from forgetting what phase it's in. This is a genuine improvement for multi-turn tasks.
+
+**Checklist effect** — Explicit `- [ ]` items give the LLM clear stopping criteria. Without them, the model tends to over-deliver or under-deliver. With them, it has a concrete target. This is well-documented in LLM behavior research.
+
+**Attempt ceiling** — The circuit breaker after N failed gates prevents infinite rework loops. Real value when the LLM keeps trying the same broken approach.
+
+### Independent Review Agent
+
+Self-reported progress is weak — the LLM can mark `[x]` without actually satisfying the criterion. The Discipline panel includes a **Review 🔍** button that launches a separate opencode session as an independent reviewer:
+
+- The reviewer has **zero prior context** — no knowledge of the implementation session
+- It reads the discipline file, reads the source code, and verifies each criterion independently
+- It updates the discipline file with findings: marking each criterion pass/fail, adding evidence, and setting the gate
+- Because it's a completely separate session, it doesn't share any attention decay or confirmation bias with the implementer
+
+`producer ≠ grader` — the same architecture that makes the discipline harness useful is what limits it. The gate model delivers real quality improvements only when reviewer and implementer are genuinely independent.
 
 ## Dependencies
 
